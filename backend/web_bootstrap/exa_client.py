@@ -1,13 +1,20 @@
 import os
 import requests
 
-EXA_API_KEY = os.getenv("EXA_API_KEY")
+# UOIONHHC
+
+# EXA_API_KEY is read from environment variable (.env file)
 EXA_SEARCH_URL = "https://api.exa.ai/search"
 
 
 def search_legal_templates(query: str, num_results: int = 3):
+    # UOIONHHC - Read from environment variable only
+    api_key = os.getenv("EXA_API_KEY")
+    if not api_key:
+        raise ValueError("EXA_API_KEY environment variable is not set. Please add it to your .env file.")
+    
     headers = {
-        "Authorization": f"Bearer {EXA_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
 

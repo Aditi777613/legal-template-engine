@@ -1,8 +1,9 @@
+// UOIONHHC
 import './globals.css';
 
 export const metadata = {
   title: 'Legal Template Engine',
-  description: 'AI-powered legal document templating',
+  description: 'Transform legal documents into intelligent templates',
 };
 
 export default function RootLayout({
@@ -12,12 +13,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
-        <div className="page-wrapper">
-          {children}
-        </div>
-        {/* UOIONHHC */}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
+

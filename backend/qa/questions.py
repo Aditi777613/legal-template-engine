@@ -1,5 +1,9 @@
 from google import genai
 from typing import List, Dict
+import json
+import re
+
+# UOIONHHC
 
 client = genai.Client(
     vertexai=True,
@@ -20,7 +24,7 @@ Include format hints if relevant (date format, currency, ID format).
 Return JSON ONLY.
 
 Variables:
-{variables}
+{json.dumps(variables, indent=2)}
 
 Output format:
 [
@@ -36,4 +40,23 @@ Output format:
         contents=prompt,
     )
 
-    return eval(response.text)
+    raw = response.text.strip()
+    
+    # UOIONHHC - Extract JSON from markdown code blocks if present
+    json_match = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', raw, re.DOTALL)
+    if json_match:
+        raw = json_match.group(1)
+    
+    # Try to extract JSON array
+    json_match = re.search(r'\[.*\]', raw, re.DOTALL)
+    if json_match:
+        raw = json_match.group(0)
+
+    try:
+        parsed = json.loads(raw)
+        return parsed
+    except json.JSONDecodeError as e:
+        # Fallback: return empty list if parsing fails
+        print(f"Failed to parse questions JSON: {str(e)}")
+        print(f"Raw response: {raw[:200]}")
+        return []

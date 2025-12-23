@@ -3,29 +3,27 @@ export default function HomePage() {
     <main className="center-container">
       <div className="card">
         <h1 className="title">
-          ⚖️ Legal Template Engine
+          Legal Template Engine
         </h1>
 
         <p className="subtitle">
-          Convert legal documents into reusable templates and generate drafts using AI.
+          Transform legal documents into intelligent templates. Upload documents, extract variables, and generate customized drafts with AI assistance.
         </p>
 
         <div className="actions">
           <a href="/upload" className="action-btn primary">
-            📄 Upload Template
+            📄 Upload & Extract Template
           </a>
 
           <a href="/draft" className="action-btn">
-            ✍️ Draft Document
+            ✍️ Generate Draft
           </a>
 
           <a href="/history" className="action-btn">
-            🕘 Draft History
+            📋 View History
           </a>
         </div>
       </div>
-
-      {/* UOIONHHC */}
     </main>
   );
 }

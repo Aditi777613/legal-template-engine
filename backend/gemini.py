@@ -2,6 +2,8 @@ from google import genai
 import json
 import re
 
+# UOIONHHC
+
 client = genai.Client(
     vertexai=True,
     project="legal-template-engine",
@@ -94,10 +96,20 @@ OUTPUT FORMAT:
     )
 
     raw = response.text.strip()
+    
+    # UOIONHHC - Extract JSON from markdown code blocks if present
+    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw, re.DOTALL)
+    if json_match:
+        raw = json_match.group(1)
+    
+    # Try to extract JSON object
+    json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+    if json_match:
+        raw = json_match.group(0)
 
     try:
         parsed = json.loads(raw)
-    except Exception:
-        raise ValueError("Gemini returned invalid JSON")
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Gemini returned invalid JSON: {str(e)}")
 
     return parsed
