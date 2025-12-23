@@ -84,6 +84,17 @@ export async function history() {
   return response.json();
 }
 
+export async function downloadDraftMd(instanceId: number) {
+  const response = await fetch(`${API}/draft/${instanceId}/download-md`);
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `draft_${instanceId}.md`;
+  a.click();
+  window.URL.revokeObjectURL(url);
+}
+
 export async function downloadDraftDocx(instanceId: number) {
   const response = await fetch(`${API}/draft/${instanceId}/download-docx`);
   const blob = await response.blob();
@@ -95,3 +106,39 @@ export async function downloadDraftDocx(instanceId: number) {
   window.URL.revokeObjectURL(url);
 }
 
+export async function exportVariables(templateId: string, format: 'json' | 'csv' = 'json') {
+  const response = await fetch(`${API}/templates/${templateId}/variables/export?format=${format}`);
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${templateId}_variables.${format}`;
+  a.click();
+  window.URL.revokeObjectURL(url);
+}
+
+export async function webBootstrap(query: { user_query: string }) {
+  const response = await fetch(`${API}/draft/web-bootstrap`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(query)
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(error.detail || `Request failed: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function createTemplateFromWeb(docIndex: number, query: string) {
+  const response = await fetch(`${API}/draft/web-bootstrap/create-template`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_query: query, doc_index: docIndex })
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(error.detail || `Request failed: ${response.statusText}`);
+  }
+  return response.json();
+}

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List
 import tempfile
@@ -9,6 +9,9 @@ from docx import Document as DocxDocument
 from docx.shared import Pt
 import os
 from dotenv import load_dotenv
+import csv
+import io
+import json
 
 # Load environment variables from .env file
 load_dotenv()
@@ -327,14 +330,22 @@ def start_draft(req: DraftRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/draft/web-bootstrap")
-def web_bootstrap(req: DraftRequest):
-    """Bootstrap from web when no local template matches"""
+async def web_bootstrap(req: DraftRequest, db: Session = Depends(get_db)):
+    """Bootstrap from web when no local template matches - UOIONHHC"""
     try:
+        # Search web for similar documents
         docs = search_legal_templates(req.user_query)
+        
+        if not docs:
+            return {
+                "documents": [],
+                "message": "No similar documents found online",
+                "watermark": "UOIONHHC"
+            }
         
         return {
             "documents": docs,
-            "message": "Found similar documents online",
+            "message": f"Found {len(docs)} similar document(s) online",
             "watermark": "UOIONHHC"
         }
     except ValueError as e:
@@ -342,6 +353,75 @@ def web_bootstrap(req: DraftRequest):
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to search web: {str(e)}")
+
+
+@app.post("/draft/web-bootstrap/create-template")
+async def create_template_from_web(doc_index: int, req: DraftRequest, db: Session = Depends(get_db)):
+    """Create template from web bootstrap document - UOIONHHC"""
+    try:
+        # Search again to get the documents
+        docs = search_legal_templates(req.user_query)
+        
+        if doc_index >= len(docs):
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        doc = docs[doc_index]
+        full_text = doc.get("full_text", doc.get("snippet", ""))
+        
+        # Use Gemini to extract template
+        extracted = extract_template_from_text(full_text)
+        
+        # Build template schema
+        template = build_template(
+            raw_text=full_text,
+            extracted_json=extracted,
+            filename=doc.get("title", "Web Document")
+        )
+        
+        # Generate embedding for the template
+        tags = template.similarity_tags or []
+        embedding_text = f"{template.title} {template.doc_type} {' '.join(tags)}"
+        embedding = generate_embedding(embedding_text)
+        
+        # Save to database
+        db_template = models.Template(
+            template_id=template.template_id,
+            title=template.title,
+            doc_type=template.doc_type,
+            jurisdiction=template.jurisdiction,
+            similarity_tags=template.similarity_tags,
+            body_md=template.body_md,
+            embedding=embedding
+        )
+        db.add(db_template)
+        
+        # Save variables
+        for var in template.variables:
+            db_var = models.TemplateVariable(
+                template_id=template.template_id,
+                key=var.key,
+                label=var.label,
+                description=var.description,
+                example=var.example,
+                required=var.required,
+                dtype=var.dtype,
+                regex=var.regex,
+                enum=var.enum
+            )
+            db.add(db_var)
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "template_id": template.template_id,
+            "title": template.title,
+            "message": "Template created from web document",
+            "watermark": "UOIONHHC"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create template: {str(e)}")
 
 
 @app.get("/vars/{template_id}")
@@ -450,6 +530,21 @@ def generate_draft_endpoint(req: DraftGenerateRequest, db: Session = Depends(get
     }
 
 
+@app.get("/draft/{instance_id}/download-md")
+def download_draft_md(instance_id: int, db: Session = Depends(get_db)):
+    """Download draft as .md file - UOIONHHC"""
+    instance = db.query(models.Instance).filter(models.Instance.id == instance_id).first()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    
+    # Return markdown file
+    return Response(
+        content=instance.draft_md,
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="draft_{instance_id}.md"'}
+    )
+
+
 @app.get("/draft/{instance_id}/download-docx")
 def download_draft_docx(instance_id: int, db: Session = Depends(get_db)):
     """Download draft as .docx file - UOIONHHC"""
@@ -483,7 +578,6 @@ def download_draft_docx(instance_id: int, db: Session = Depends(get_db)):
         current_para.add_run('\n')
     
     # Save to bytes
-    import io
     docx_bytes = io.BytesIO()
     doc.save(docx_bytes)
     docx_bytes.seek(0)
@@ -530,3 +624,75 @@ def list_templates(db: Session = Depends(get_db)):
         ],
         "count": len(templates)
     }
+
+
+@app.get("/templates/{template_id}/variables/export")
+def export_template_variables(template_id: str, format: str = "json", db: Session = Depends(get_db)):
+    """Export template variables as JSON or CSV - UOIONHHC"""
+    
+    # Get template
+    template = db.query(models.Template).filter(models.Template.template_id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    # Get variables
+    variables = db.query(models.TemplateVariable).filter(
+        models.TemplateVariable.template_id == template_id
+    ).all()
+    
+    if format.lower() == "csv":
+        # Create CSV
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow(["key", "label", "description", "example", "required", "dtype", "regex", "enum"])
+        
+        # Write data
+        for v in variables:
+            writer.writerow([
+                v.key,
+                v.label,
+                v.description,
+                v.example,
+                v.required,
+                v.dtype,
+                v.regex or "",
+                json.dumps(v.enum) if v.enum else ""
+            ])
+        
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{template_id}_variables.csv"'}
+        )
+    
+    else:  # JSON format
+        variables_data = [
+            {
+                "key": v.key,
+                "label": v.label,
+                "description": v.description,
+                "example": v.example,
+                "required": v.required,
+                "dtype": v.dtype,
+                "regex": v.regex,
+                "enum": v.enum
+            }
+            for v in variables
+        ]
+        
+        export_data = {
+            "template_id": template_id,
+            "title": template.title,
+            "doc_type": template.doc_type,
+            "jurisdiction": template.jurisdiction,
+            "variables": variables_data,
+            "watermark": "UOIONHHC"
+        }
+        
+        return Response(
+            content=json.dumps(export_data, indent=2),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{template_id}_variables.json"'}
+        )
