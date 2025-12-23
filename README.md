@@ -135,7 +135,7 @@ Frontend will be available at: `http://localhost:3000`
        │ HTTP/REST
        ▼
 ┌─────────────┐      ┌──────────┐
-│   FastAPI   │─────▶│  Gemini  │
+│   FastAPI   │─────▶│  Vertex │
 │   Backend   │      │   API    │
 └──────┬──────┘      └──────────┘
        │
