@@ -14,6 +14,9 @@ export default function Draft() {
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [webDocs, setWebDocs] = useState<any[]>([]);
   const [showWebBootstrap, setShowWebBootstrap] = useState(false);
+  const [processingDocIndex, setProcessingDocIndex] = useState<number | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [webSearchLoading, setWebSearchLoading] = useState(false);
 
   async function start() {
     if (!query.trim()) return;
@@ -55,7 +58,7 @@ export default function Draft() {
   }
 
   async function triggerWebBootstrap() {
-    setLoading(true);
+    setWebSearchLoading(true);
     try {
       const res = await fetch("http://127.0.0.1:8000/draft/web-bootstrap", {
         method: "POST",
@@ -73,13 +76,18 @@ export default function Draft() {
     } catch (err: any) {
       setError("Web search failed. " + (err.message || "Please check if EXA_API_KEY is configured."));
     } finally {
-      setLoading(false);
+      setWebSearchLoading(false);
     }
   }
 
   async function createFromWebDoc(docIndex: number) {
     setLoading(true);
+    setProcessingDocIndex(docIndex);
+    console.log("Creating template from web doc index:", docIndex);
+    console.log("Current query:", query);
+    
     try {
+      console.log("Making fetch request...");
       const res = await fetch("http://127.0.0.1:8000/draft/web-bootstrap/create-template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -88,19 +96,37 @@ export default function Draft() {
           doc_index: docIndex 
         })
       });
+      
+      console.log("Response received, status:", res.status);
+      
+      if (!res.ok) {
+        console.error("HTTP error:", res.status, res.statusText);
+        const errorText = await res.text();
+        console.error("Error response:", errorText);
+        setError(`HTTP ${res.status}: ${res.statusText}`);
+        return;
+      }
+      
       const data = await res.json();
+      console.log("Parsed response data:", data);
       
       if (data.success && data.template_id) {
+        console.log("Template created successfully:", data.template_id);
         alert(`✅ Template created: ${data.title}`);
         // Load the newly created template
         await loadVars(data.template_id);
         setShowWebBootstrap(false);
         setWebDocs([]);
+      } else {
+        console.error("Template creation failed:", data);
+        setError(data.message || "Failed to create template from web document.");
       }
     } catch (err: any) {
-      setError("Failed to create template from web document.");
+      console.error("Network or parsing error:", err);
+      setError("Failed to create template from web document: " + (err.message || "Network error"));
     } finally {
       setLoading(false);
+      setProcessingDocIndex(null);
     }
   }
 
@@ -172,6 +198,7 @@ export default function Draft() {
   function handleEditVariables() {
     setDraft("");
     setInstanceId(null);
+    setEditMode(true);
     // Variables are still loaded, user can edit and regenerate
   }
 
@@ -200,29 +227,47 @@ export default function Draft() {
         {error && <p style={{color: '#dc2626', marginTop: '12px'}}>{error}</p>}
 
         {/* Web Bootstrap Section */}
-        {showWebBootstrap && webDocs.length > 0 && (
+        {showWebBootstrap && (
           <div style={{marginTop: '24px'}}>
-            <div style={{background: '#fef3c7', padding: '20px', borderRadius: '12px', border: '1px solid #f59e0b', marginBottom: '16px'}}>
-              <h3 style={{color: '#92400e', marginBottom: '8px'}}>🌐 Web Bootstrap: Similar Documents Found</h3>
-              <p style={{fontSize: '14px', color: '#78350f'}}>
-                No local template matched your request. We found {webDocs.length} similar document(s) online. Select one to create a template and continue.
-              </p>
-            </div>
-
-            {webDocs.map((doc, idx) => (
-              <div key={idx} style={{background: 'white', padding: '16px', borderRadius: '8px', marginBottom: '12px', border: '1px solid #e5e7eb'}}>
-                <h4 style={{fontSize: '16px', fontWeight: '600', marginBottom: '8px'}}>{doc.title}</h4>
-                <p style={{fontSize: '13px', color: '#6b7280', marginBottom: '8px'}}>
-                  <strong>Source:</strong> <a href={doc.source} target="_blank" rel="noopener noreferrer" style={{color: '#4f46e5'}}>{doc.source}</a>
+            {webSearchLoading ? (
+              <div style={{background: '#fef3c7', padding: '20px', borderRadius: '12px', border: '1px solid #f59e0b', marginBottom: '16px'}}>
+                <h3 style={{color: '#92400e', marginBottom: '8px'}}>🌐 Web Bootstrap: Searching Online</h3>
+                <p style={{fontSize: '14px', color: '#78350f'}}>
+                  No local template found, searching the web for similar documents...
                 </p>
-                <p style={{fontSize: '13px', color: '#374151', marginBottom: '12px', lineHeight: '1.5'}}>
-                  {doc.snippet.substring(0, 200)}...
-                </p>
-                <button onClick={() => createFromWebDoc(idx)} disabled={loading}>
-                  {loading ? "Creating..." : "🔄 Create Template & Continue"}
-                </button>
+                <div style={{display: 'flex', alignItems: 'center', marginTop: '12px'}}>
+                  <div style={{width: '20px', height: '20px', border: '2px solid #f59e0b', borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', marginRight: '12px'}}></div>
+                  <span style={{color: '#92400e'}}>Searching...</span>
+                </div>
               </div>
-            ))}
+            ) : webDocs.length > 0 ? (
+              <>
+                <div style={{background: '#fef3c7', padding: '20px', borderRadius: '12px', border: '1px solid #f59e0b', marginBottom: '16px'}}>
+                  <h3 style={{color: '#92400e', marginBottom: '8px'}}>🌐 Web Bootstrap: Similar Documents Found</h3>
+                  <p style={{fontSize: '14px', color: '#78350f'}}>
+                    No local template matched your request. We found {webDocs.length} similar document(s) online. Select one to create a template and continue.
+                  </p>
+                </div>
+
+                {webDocs.map((doc, idx) => (
+                  // Only show the document being processed, or all if none are processing
+                  (processingDocIndex === null || processingDocIndex === idx) && (
+                    <div key={idx} style={{background: 'white', padding: '16px', borderRadius: '8px', marginBottom: '12px', border: '1px solid #e5e7eb'}}>
+                      <h4 style={{fontSize: '16px', fontWeight: '600', marginBottom: '8px'}}>{doc.title}</h4>
+                      <p style={{fontSize: '13px', color: '#6b7280', marginBottom: '8px'}}>
+                        <strong>Source:</strong> <a href={doc.source} target="_blank" rel="noopener noreferrer" style={{color: '#4f46e5', wordBreak: 'break-all', display: 'inline-block', maxWidth: '100%'}}>{doc.source}</a>
+                      </p>
+                      <p style={{fontSize: '13px', color: '#374151', marginBottom: '12px', lineHeight: '1.5'}}>
+                        {doc.snippet.substring(0, 200)}...
+                      </p>
+                      <button onClick={() => createFromWebDoc(idx)} disabled={loading}>
+                        {processingDocIndex === idx ? "Creating..." : loading ? "Please wait..." : "🔄 Create Template & Continue"}
+                      </button>
+                    </div>
+                  )
+                ))}
+              </>
+            ) : null}
           </div>
         )}
 
@@ -303,20 +348,36 @@ export default function Draft() {
               </div>
             </div>
 
-            <h3>❓ Answer Questions</h3>
-            <p style={{color: '#6b7280', marginBottom: '16px', fontSize: '14px'}}>Fill in the missing information to customize your document</p>
-            {vars?.missing?.map((q: any) => (
+            <h3>❓ {editMode ? "Edit Variables" : "Answer Questions"}</h3>
+            <p style={{color: '#6b7280', marginBottom: '16px', fontSize: '14px'}}>
+              {editMode ? "Edit the variable values below:" : "Fill in the missing information to customize your document"}
+            </p>
+            
+            {/* Show all variables in edit mode, only missing in normal mode */}
+            {(editMode ? vars?.all_variables : vars?.missing)?.map((q: any) => (
               <div key={q.key} style={{marginBottom: '16px'}}>
-                <label style={{display: 'block', marginBottom: '6px', fontWeight: '500'}}>{q.question}</label>
+                <label style={{display: 'block', marginBottom: '6px', fontWeight: '500'}}>
+                  {editMode ? q.label : q.question}
+                </label>
                 <input 
                   type="text"
                   placeholder={q.example || "Enter value"}
+                  defaultValue={vars?.answered?.[q.key] || ""}
                   onBlur={e => answer(q.key, e.target.value)} 
                 />
               </div>
             ))}
-            <button onClick={generate} disabled={loading || (vars.missing && vars.missing.length > 0)}>
-              {loading ? "Generating..." : "✍️ Generate Draft"}
+            
+            {editMode && (!vars?.all_variables || vars.all_variables.length === 0) && (
+              <p style={{color: '#6b7280', fontStyle: 'italic'}}>No variables to edit.</p>
+            )}
+            
+            {!editMode && (!vars?.missing || vars.missing.length === 0) && (
+              <p style={{color: '#059669', fontStyle: 'italic'}}>All required variables have been filled. Click "Generate Draft" to continue.</p>
+            )}
+            
+            <button onClick={generate} disabled={loading}>
+              {loading ? "Generating..." : editMode ? "🔄 Update & Regenerate Draft" : "✍️ Generate Draft"}
             </button>
           </div>
         )}

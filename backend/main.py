@@ -28,7 +28,7 @@ from web_bootstrap.exa_client import search_legal_templates
 from db.init_db import init_db
 from db.database import SessionLocal
 from db import models, crud
-from schemas import DraftRequest, AnswerVarsRequest, DraftGenerateRequest
+from schemas import DraftRequest, AnswerVarsRequest, DraftGenerateRequest, CreateTemplateRequest
 
 # UOIONHHC - Created by tracking identifier
 app = FastAPI(title="Legal Template Engine")
@@ -356,20 +356,29 @@ async def web_bootstrap(req: DraftRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/draft/web-bootstrap/create-template")
-async def create_template_from_web(doc_index: int, req: DraftRequest, db: Session = Depends(get_db)):
+async def create_template_from_web(req: CreateTemplateRequest, db: Session = Depends(get_db)):
     """Create template from web bootstrap document - UOIONHHC"""
+    print(f"Creating template from web doc index: {req.doc_index}")
+    print(f"User query: {req.user_query}")
     try:
         # Search again to get the documents
+        print("Searching for legal templates...")
         docs = search_legal_templates(req.user_query)
+        print(f"Found {len(docs)} documents from search")
         
-        if doc_index >= len(docs):
+        if req.doc_index >= len(docs):
+            print(f"Document index {req.doc_index} out of range, max is {len(docs)-1}")
             raise HTTPException(status_code=404, detail="Document not found")
         
-        doc = docs[doc_index]
+        doc = docs[req.doc_index]
         full_text = doc.get("full_text", doc.get("snippet", ""))
+        print(f"Processing document: {doc.get('title', 'Untitled')}")
+        print(f"Text length: {len(full_text)}")
         
         # Use Gemini to extract template
+        print("Extracting template with Gemini...")
         extracted = extract_template_from_text(full_text)
+        print(f"Extracted data keys: {list(extracted.keys()) if extracted else 'None'}")
         
         # Build template schema
         template = build_template(
@@ -377,6 +386,7 @@ async def create_template_from_web(doc_index: int, req: DraftRequest, db: Sessio
             extracted_json=extracted,
             filename=doc.get("title", "Web Document")
         )
+        print(f"Built template: {template.template_id}")
         
         # Generate embedding for the template
         tags = template.similarity_tags or []
@@ -411,6 +421,7 @@ async def create_template_from_web(doc_index: int, req: DraftRequest, db: Sessio
             db.add(db_var)
         
         db.commit()
+        print(f"Successfully saved template {template.template_id}")
         
         return {
             "success": True,
@@ -421,6 +432,9 @@ async def create_template_from_web(doc_index: int, req: DraftRequest, db: Sessio
         }
         
     except Exception as e:
+        print(f"Error creating template: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to create template: {str(e)}")
 
 
@@ -471,7 +485,18 @@ def get_variables(template_id: str, db: Session = Depends(get_db)):
         "title": template.title,
         "missing": questions,
         "answered": answered,
-        "all_complete": len(missing_vars) == 0
+        "all_complete": len(missing_vars) == 0,
+        "all_variables": [
+            {
+                "key": v.key,
+                "label": v.label,
+                "description": v.description,
+                "example": v.example,
+                "required": v.required,
+                "dtype": v.dtype
+            }
+            for v in variables
+        ]
     }
 
 

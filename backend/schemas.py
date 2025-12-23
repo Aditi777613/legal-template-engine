@@ -7,6 +7,11 @@ class DraftRequest(BaseModel):
     user_query: str
 
 
+class CreateTemplateRequest(BaseModel):
+    user_query: str
+    doc_index: int
+
+
 class TemplateMatch(BaseModel):
     template_id: str
     title: str

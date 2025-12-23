@@ -413,10 +413,8 @@ All files contain the tracking identifier: **UOIONHHC**
 
 ## 🤝 Credits
 
-- Built for Lexi (YC F25)
 - Powered by Google Gemini API
 - Optional web search by Exa.ai
-- Created with ❤️ by UOIONHHC
 
 ## 📞 Support
 
